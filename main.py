@@ -25,6 +25,7 @@ dp = Dispatcher(bot, storage=storage)
 # Конфигурация администраторов
 ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
 
+
 # Функция для создания клавиатуры с кнопкой меню
 def get_back_to_menu_keyboard():
     """Возвращает клавиатуру с кнопкой возврата в меню"""
@@ -33,52 +34,42 @@ def get_back_to_menu_keyboard():
     )
     return keyboard
 
-# Функция для создания клавиатуры с кнопкой меню и дополнительными кнопками
-def get_keyboard_with_menu(buttons=None, row_width=2):
-    """Создает клавиатуру с кнопками и кнопкой меню внизу"""
-    keyboard = InlineKeyboardMarkup(row_width=row_width)
-    
-    if buttons:
-        for button in buttons:
-            if isinstance(button, list):
-                keyboard.add(*button)
-            else:
-                keyboard.add(button)
-    
-    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    return keyboard
 
 # Функции для проверки формата даты и времени
 def validate_date(date_str):
     """Проверяет, что дата в формате ДД.ММ.ГГГГ и корректна"""
     try:
-        # Проверяем формат
         if len(date_str) != 10:
             return False, "Дата должна быть в формате ДД.ММ.ГГГГ (10 символов)"
-        
-        # Разбиваем на части
+
         parts = date_str.split('.')
         if len(parts) != 3:
             return False, "Дата должна содержать день, месяц и год, разделенные точками"
-        
+
         day, month, year = parts
-        
-        # Проверяем, что это числа
+
         if not day.isdigit() or not month.isdigit() or not year.isdigit():
             return False, "День, месяц и год должны быть числами"
-        
+
         day = int(day)
         month = int(month)
         year = int(year)
-        
+
         # Проверяем диапазоны
         if day < 1 or day > 31:
             return False, "День должен быть от 1 до 31"
         if month < 1 or month > 12:
             return False, "Месяц должен быть от 1 до 12"
-        if year < 2024 or year > 2025:
-            return False, "Год должен быть 2024 или 2025"
-        
+
+        # Получаем текущий год для контекста
+        current_year = datetime.now().year
+
+        # Проверяем год (от текущего до текущего+2, чтобы можно было планировать мероприятия)
+        if year < current_year:
+            return False, f"Год не может быть меньше {current_year}"
+        if year > current_year + 2:
+            return False, f"Год не может быть больше {current_year + 2} (максимум 2 года вперед)"
+
         # Проверяем корректность даты (учет дней в месяце)
         max_days = calendar.monthrange(year, month)[1]
         if day > max_days:
@@ -88,41 +79,39 @@ def validate_date(date_str):
                 9: "сентябре", 10: "октябре", 11: "ноябре", 12: "декабре"
             }
             return False, f"В {months_ru[month]} только {max_days} дней"
-        
+
         return True, "Дата корректна"
     except Exception as e:
         return False, f"Ошибка в формате даты: {str(e)}"
 
+
 def validate_time(time_str):
     """Проверяет, что время в формате ЧЧ:ММ"""
     try:
-        # Проверяем формат
         if len(time_str) != 5:
             return False, "Время должно быть в формате ЧЧ:ММ (5 символов, например 14:30)"
-        
-        # Разбиваем на части
+
         parts = time_str.split(':')
         if len(parts) != 2:
             return False, "Время должно содержать часы и минуты, разделенные двоеточием"
-        
+
         hours, minutes = parts
-        
-        # Проверяем, что это числа
+
         if not hours.isdigit() or not minutes.isdigit():
             return False, "Часы и минуты должны быть числами"
-        
+
         hours = int(hours)
         minutes = int(minutes)
-        
-        # Проверяем диапазоны
+
         if hours < 0 or hours > 23:
             return False, "Часы должны быть от 0 до 23"
         if minutes < 0 or minutes > 59:
             return False, "Минуты должны быть от 0 до 59"
-        
+
         return True, "Время корректно"
     except Exception as e:
         return False, f"Ошибка в формате времени: {str(e)}"
+
 
 # Класс для работы с базой данных
 class Database:
@@ -132,7 +121,7 @@ class Database:
         self.registrations_file = 'registrations.txt'
         self.parent_consent_file = 'parent_consent.txt'
         self.init_files()
-    
+
     def init_files(self):
         """Инициализация файлов с заголовками"""
         files_content = {
@@ -141,20 +130,20 @@ class Database:
             self.registrations_file: 'registration_id|user_id|event_id|registration_date|status\n',
             self.parent_consent_file: 'consent_id|user_id|event_id|consent|consent_date\n'
         }
-        
+
         for file_path, header in files_content.items():
             if not os.path.exists(file_path):
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(header)
-    
+
     def add_user(self, user_id, username, first_name, last_name):
         """Добавление пользователя в БД"""
         if self.user_exists(user_id):
             return
-        
+
         with open(self.users_file, 'a', encoding='utf-8') as f:
             f.write(f"{user_id}|{username}|{first_name}|{last_name}|{datetime.now()}|user\n")
-    
+
     def user_exists(self, user_id):
         """Проверка существования пользователя"""
         try:
@@ -167,7 +156,7 @@ class Database:
             return False
         except:
             return False
-    
+
     def get_user_role(self, user_id):
         """Получение роли пользователя"""
         try:
@@ -180,16 +169,16 @@ class Database:
             return 'user'
         except:
             return 'user'
-    
+
     def add_event(self, title, description, date, time, location, max_participants):
         """Добавление нового мероприятия"""
         events = self.get_all_events()
         event_id = len(events) + 1
-        
+
         with open(self.events_file, 'a', encoding='utf-8') as f:
             f.write(f"{event_id}|{title}|{description}|{date}|{time}|{location}|{max_participants}|0\n")
         return event_id
-    
+
     def get_all_events(self):
         """Получение всех мероприятий"""
         events = []
@@ -198,12 +187,12 @@ class Database:
                 lines = f.readlines()
                 if len(lines) <= 1:
                     return events
-                
+
                 for line in lines[1:]:
                     line = line.strip()
                     if not line:
                         continue
-                        
+
                     data = line.split('|')
                     if len(data) >= 8:
                         events.append({
@@ -219,7 +208,7 @@ class Database:
         except Exception as e:
             logging.error(f"Ошибка при чтении мероприятий: {e}")
         return events
-    
+
     def get_event(self, event_id):
         """Получение конкретного мероприятия"""
         events = self.get_all_events()
@@ -227,33 +216,58 @@ class Database:
             if event['id'] == event_id:
                 return event
         return None
-    
+
     def register_for_event(self, user_id, event_id):
         """Регистрация на мероприятие"""
-        registrations = self.get_user_registrations(user_id)
-        for reg in registrations:
+        # Проверяем, есть ли уже активная регистрация (pending или confirmed)
+        active_registrations = self.get_user_registrations(user_id)
+        for reg in active_registrations:
             if reg['event_id'] == event_id:
-                return False, "Вы уже зарегистрированы на это мероприятие"
-        
+                return False, "У вас уже есть активная регистрация на это мероприятие"
+
+        # Проверяем, есть ли отказы в прошлом
+        past_registrations = self.get_all_user_event_registrations(user_id, event_id)
+        for reg in past_registrations:
+            if reg['status'] == 'cancelled':
+                # Можно добавить предупреждение, но не блокировать регистрацию
+                logging.info(f"Пользователь {user_id} повторно регистрируется на мероприятие {event_id} после отказа")
+
         event = self.get_event(event_id)
         if not event:
             return False, "Мероприятие не найдено"
-        
-        if event['current_participants'] >= event['max_participants']:
-            return False, "Нет свободных мест"
-        
+
         reg_id = len(self.get_all_registrations()) + 1
         with open(self.registrations_file, 'a', encoding='utf-8') as f:
             f.write(f"{reg_id}|{user_id}|{event_id}|{datetime.now()}|pending\n")
-        
-        self.update_event_participants(event_id, 1)
+
         return True, "Регистрация успешна! Требуется согласие родителей."
-    
+
+    def get_all_user_event_registrations(self, user_id, event_id):
+        """Получение ВСЕХ регистраций пользователя на мероприятие (включая cancelled)"""
+        registrations = []
+        try:
+            with open(self.registrations_file, 'r', encoding='utf-8') as f:
+                next(f)
+                for line in f:
+                    data = line.strip().split('|')
+                    if len(data) >= 5:
+                        if int(data[1]) == user_id and int(data[2]) == event_id:
+                            registrations.append({
+                                'id': int(data[0]),
+                                'user_id': int(data[1]),
+                                'event_id': int(data[2]),
+                                'date': data[3],
+                                'status': data[4]
+                            })
+        except Exception as e:
+            logging.error(f"Ошибка при чтении регистраций: {e}")
+        return registrations
+
     def update_event_participants(self, event_id, change):
         """Обновление количества участников мероприятия"""
         events = self.get_all_events()
         logging.info(f"Обновление участников: событие {event_id}, изменение {change}")
-        
+
         with open(self.events_file, 'w', encoding='utf-8') as f:
             f.write('event_id|title|description|date|time|location|max_participants|current_participants\n')
             for event in events:
@@ -264,18 +278,55 @@ class Database:
                         event['current_participants'] = 0
                     logging.info(f"Событие {event_id}: было {old_count}, стало {event['current_participants']}")
                 f.write(f"{event['id']}|{event['title']}|{event['description']}|{event['date']}|"
-                       f"{event['time']}|{event['location']}|{event['max_participants']}|"
-                       f"{event['current_participants']}\n")
-    
+                        f"{event['time']}|{event['location']}|{event['max_participants']}|"
+                        f"{event['current_participants']}\n")
+
     def get_user_registrations(self, user_id):
-        """Получение регистраций пользователя"""
+        """Получение активных регистраций пользователя (pending и confirmed)"""
         registrations = []
         try:
             with open(self.registrations_file, 'r', encoding='utf-8') as f:
                 next(f)
                 for line in f:
                     data = line.strip().split('|')
-                    if int(data[1]) == user_id:
+                    if len(data) >= 5:
+                        if int(data[1]) == user_id and data[4] in ['pending', 'confirmed']:
+                            registrations.append({
+                                'id': int(data[0]),
+                                'user_id': int(data[1]),
+                                'event_id': int(data[2]),
+                                'date': data[3],
+                                'status': data[4]
+                            })
+        except Exception as e:
+            logging.error(f"Ошибка при чтении регистраций: {e}")
+        return registrations
+
+    def has_user_cancelled(self, user_id, event_id):
+        """Проверяет, отказывался ли пользователь от согласия"""
+        try:
+            with open(self.registrations_file, 'r', encoding='utf-8') as f:
+                next(f)
+                for line in f:
+                    data = line.strip().split('|')
+                    if len(data) >= 5:
+                        if int(data[1]) == user_id and int(data[2]) == event_id and data[4] == 'cancelled':
+                            return True
+            return False
+        except Exception as e:
+            logging.error(f"Ошибка при проверке отказа: {e}")
+            return False
+
+
+    def get_all_registrations(self):
+        """Получение всех регистраций"""
+        registrations = []
+        try:
+            with open(self.registrations_file, 'r', encoding='utf-8') as f:
+                next(f)
+                for line in f:
+                    data = line.strip().split('|')
+                    if len(data) >= 5:
                         registrations.append({
                             'id': int(data[0]),
                             'user_id': int(data[1]),
@@ -286,48 +337,117 @@ class Database:
         except Exception as e:
             logging.error(f"Ошибка при чтении регистраций: {e}")
         return registrations
-    
-    def get_all_registrations(self):
-        """Получение всех регистраций"""
-        registrations = []
+
+    def get_registration_status(self, user_id, event_id):
+        """Получение статуса регистрации пользователя на мероприятие"""
         try:
             with open(self.registrations_file, 'r', encoding='utf-8') as f:
                 next(f)
                 for line in f:
                     data = line.strip().split('|')
-                    registrations.append({
-                        'id': int(data[0]),
-                        'user_id': int(data[1]),
-                        'event_id': int(data[2]),
-                        'date': data[3],
-                        'status': data[4]
-                    })
+                    if len(data) >= 5:
+                        if int(data[1]) == user_id and int(data[2]) == event_id:
+                            return data[4]
+            return None
         except Exception as e:
-            logging.error(f"Ошибка при чтении регистраций: {e}")
-        return registrations
-    
+            logging.error(f"Ошибка при получении статуса регистрации: {e}")
+            return None
+
     def save_parent_consent(self, user_id, event_id, consent):
         """Сохранение согласия родителей"""
-        consents = self.get_all_consents()
-        consent_id = len(consents) + 1
-        with open(self.parent_consent_file, 'a', encoding='utf-8') as f:
-            f.write(f"{consent_id}|{user_id}|{event_id}|{consent}|{datetime.now()}\n")
-        
-        self.update_registration_status(user_id, event_id, 'confirmed' if consent == 'yes' else 'cancelled')
-        
-        if consent == 'no':
-            self.update_event_participants(event_id, -1)
-    
+        try:
+            # Получаем ВСЕ регистрации пользователя на это мероприятие
+            all_user_registrations = []
+            with open(self.registrations_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                header = lines[0]
+                for line in lines[1:]:
+                    data = line.strip().split('|')
+                    if len(data) >= 5:
+                        if int(data[1]) == user_id and int(data[2]) == event_id:
+                            all_user_registrations.append({
+                                'id': int(data[0]),
+                                'user_id': int(data[1]),
+                                'event_id': int(data[2]),
+                                'date': data[3],
+                                'status': data[4]
+                            })
+
+            # Находим самую последнюю активную запись (pending или confirmed)
+            active_registration = None
+            for reg in all_user_registrations:
+                if reg['status'] in ['pending', 'confirmed']:
+                    if active_registration is None or reg['id'] > active_registration['id']:
+                        active_registration = reg
+
+            if not active_registration:
+                logging.error(f"Нет активной регистрации для user={user_id}, event={event_id}")
+                return False
+
+            # Сохраняем согласие в файл
+            consents = self.get_all_consents()
+            consent_id = len(consents) + 1
+            with open(self.parent_consent_file, 'a', encoding='utf-8') as f:
+                f.write(f"{consent_id}|{user_id}|{event_id}|{consent}|{datetime.now()}\n")
+
+            # Определяем новый статус
+            old_status = active_registration['status']
+
+            if consent == 'yes':
+                new_status = 'confirmed'
+                # Увеличиваем счетчик только если раньше не было подтверждения
+                if old_status != 'confirmed':
+                    self.update_event_participants(event_id, 1)
+                    logging.info(f"Участник подтвержден: user={user_id}, event={event_id}")
+            else:  # consent == 'no'
+                new_status = 'cancelled'
+                # Если было подтверждение, уменьшаем счетчик
+                if old_status == 'confirmed':
+                    self.update_event_participants(event_id, -1)
+                    logging.info(f"Подтверждение отменено: user={user_id}, event={event_id}")
+
+            # Обновляем статус ТОЛЬКО активной записи
+            self.update_specific_registration_status(active_registration['id'], new_status)
+
+            logging.info(
+                f"Согласие сохранено: user={user_id}, event={event_id}, consent={consent}, new_status={new_status}")
+            return True
+        except Exception as e:
+            logging.error(f"Ошибка при сохранении согласия: {e}")
+            return False
+
+    def update_specific_registration_status(self, registration_id, new_status):
+        """Обновление статуса конкретной регистрации по ID"""
+        try:
+            registrations = self.get_all_registrations()
+            with open(self.registrations_file, 'w', encoding='utf-8') as f:
+                f.write('registration_id|user_id|event_id|registration_date|status\n')
+                for reg in registrations:
+                    if reg['id'] == registration_id:
+                        reg['status'] = new_status
+                        logging.info(f"Статус записи {registration_id} обновлен на {new_status}")
+                    f.write(f"{reg['id']}|{reg['user_id']}|{reg['event_id']}|{reg['date']}|{reg['status']}\n")
+            return True
+        except Exception as e:
+            logging.error(f"Ошибка при обновлении статуса записи {registration_id}: {e}")
+            return False
+
     def update_registration_status(self, user_id, event_id, status):
         """Обновление статуса регистрации"""
-        registrations = self.get_all_registrations()
-        with open(self.registrations_file, 'w', encoding='utf-8') as f:
-            f.write('registration_id|user_id|event_id|registration_date|status\n')
-            for reg in registrations:
-                if reg['user_id'] == user_id and reg['event_id'] == event_id:
-                    reg['status'] = status
-                f.write(f"{reg['id']}|{reg['user_id']}|{reg['event_id']}|{reg['date']}|{reg['status']}\n")
-    
+        try:
+            registrations = self.get_all_registrations()
+            with open(self.registrations_file, 'w', encoding='utf-8') as f:
+                f.write('registration_id|user_id|event_id|registration_date|status\n')
+                for reg in registrations:
+                    if reg['user_id'] == user_id and reg['event_id'] == event_id:
+                        reg['status'] = status
+                        logging.info(f"Статус обновлен: user={user_id}, event={event_id}, new_status={status}")
+                    f.write(f"{reg['id']}|{reg['user_id']}|{reg['event_id']}|{reg['date']}|{reg['status']}\n")
+            return True
+        except Exception as e:
+            logging.error(f"Ошибка при обновлении статуса: {e}")
+            return False
+
     def get_all_consents(self):
         """Получение всех согласий"""
         consents = []
@@ -336,37 +456,40 @@ class Database:
                 next(f)
                 for line in f:
                     data = line.strip().split('|')
-                    consents.append({
-                        'id': int(data[0]),
-                        'user_id': int(data[1]),
-                        'event_id': int(data[2]),
-                        'consent': data[3],
-                        'date': data[4]
-                    })
+                    if len(data) >= 5:
+                        consents.append({
+                            'id': int(data[0]),
+                            'user_id': int(data[1]),
+                            'event_id': int(data[2]),
+                            'consent': data[3],
+                            'date': data[4]
+                        })
         except Exception as e:
             logging.error(f"Ошибка при чтении согласий: {e}")
         return consents
-    
+
     def get_event_participants(self, event_id):
-        """Получение списка участников мероприятия"""
+        """Получение списка подтвержденных участников мероприятия (только confirmed)"""
         participants = []
         registrations = self.get_all_registrations()
-        
+
         users = {}
         try:
             with open(self.users_file, 'r', encoding='utf-8') as f:
                 next(f)
                 for line in f:
                     data = line.strip().split('|')
-                    users[int(data[0])] = {
-                        'username': data[1],
-                        'first_name': data[2],
-                        'last_name': data[3]
-                    }
+                    if len(data) >= 4:
+                        users[int(data[0])] = {
+                            'username': data[1],
+                            'first_name': data[2],
+                            'last_name': data[3]
+                        }
         except Exception as e:
             logging.error(f"Ошибка при чтении пользователей: {e}")
-        
+
         for reg in registrations:
+            # Только статус 'confirmed'
             if reg['event_id'] == event_id and reg['status'] == 'confirmed':
                 user = users.get(reg['user_id'], {})
                 participants.append({
@@ -376,47 +499,90 @@ class Database:
                     'last_name': user.get('last_name', ''),
                     'status': reg['status']
                 })
-        
+
         return participants
-    
+
+    def get_pending_registrations(self, event_id):
+        """Получение списка пользователей с ожидающим согласием (только pending)"""
+        pending = []
+        registrations = self.get_all_registrations()
+
+        users = {}
+        try:
+            with open(self.users_file, 'r', encoding='utf-8') as f:
+                next(f)
+                for line in f:
+                    data = line.strip().split('|')
+                    if len(data) >= 4:
+                        users[int(data[0])] = {
+                            'username': data[1],
+                            'first_name': data[2],
+                            'last_name': data[3]
+                        }
+        except Exception as e:
+            logging.error(f"Ошибка при чтении пользователей: {e}")
+
+        for reg in registrations:
+            # Только статус 'pending'
+            if reg['event_id'] == event_id and reg['status'] == 'pending':
+                user = users.get(reg['user_id'], {})
+                pending.append({
+                    'user_id': reg['user_id'],
+                    'username': user.get('username', ''),
+                    'first_name': user.get('first_name', ''),
+                    'last_name': user.get('last_name', ''),
+                    'registration_date': reg['date']
+                })
+
+        return pending
+
     def delete_event(self, event_id):
         """Удаление мероприятия"""
         events = self.get_all_events()
-        
+
         participants = self.get_event_participants(event_id)
         if participants:
             return False, f"Нельзя удалить мероприятие, на которое записано {len(participants)} участников"
-        
+
         with open(self.events_file, 'w', encoding='utf-8') as f:
             f.write('event_id|title|description|date|time|location|max_participants|current_participants\n')
             for event in events:
                 if event['id'] != event_id:
                     f.write(f"{event['id']}|{event['title']}|{event['description']}|{event['date']}|"
-                           f"{event['time']}|{event['location']}|{event['max_participants']}|"
-                           f"{event['current_participants']}\n")
-        
+                            f"{event['time']}|{event['location']}|{event['max_participants']}|"
+                            f"{event['current_participants']}\n")
+
         return True, "Мероприятие успешно удалено"
-    
+
     def cancel_registration(self, user_id, event_id):
         """Отмена регистрации на мероприятие"""
-        registrations = self.get_all_registrations()
-        registration_found = False
-        
-        with open(self.registrations_file, 'w', encoding='utf-8') as f:
-            f.write('registration_id|user_id|event_id|registration_date|status\n')
-            for reg in registrations:
-                if reg['user_id'] == user_id and reg['event_id'] == event_id:
-                    registration_found = True
-                    continue
-                f.write(f"{reg['id']}|{reg['user_id']}|{reg['event_id']}|{reg['date']}|{reg['status']}\n")
-        
-        if registration_found:
-            self.update_event_participants(event_id, -1)
+        # Находим активную регистрацию
+        active_registrations = self.get_user_registrations(user_id)
+        active_reg = None
+        for reg in active_registrations:
+            if reg['event_id'] == event_id:
+                active_reg = reg
+                break
+
+        if not active_reg:
+            return False, "Активная регистрация не найдена"
+
+        old_status = active_reg['status']
+
+        # Обновляем статус на cancelled
+        success = self.update_specific_registration_status(active_reg['id'], 'cancelled')
+
+        if success:
+            # Если регистрация была подтверждена, уменьшаем счетчик
+            if old_status == 'confirmed':
+                self.update_event_participants(event_id, -1)
+
+            # Удаляем согласие родителей, если было
             self.delete_parent_consent(user_id, event_id)
             return True, "Регистрация успешно отменена"
         else:
-            return False, "Регистрация не найдена"
-    
+            return False, "Ошибка при отмене регистрации"
+
     def delete_parent_consent(self, user_id, event_id):
         """Удаление согласия родителей"""
         consents = self.get_all_consents()
@@ -425,7 +591,8 @@ class Database:
             for consent in consents:
                 if not (consent['user_id'] == user_id and consent['event_id'] == event_id):
                     f.write(f"{consent['id']}|{consent['user_id']}|{consent['event_id']}|"
-                           f"{consent['consent']}|{consent['date']}\n")
+                            f"{consent['consent']}|{consent['date']}\n")
+
 
 # Состояния для FSM
 class EventStates(StatesGroup):
@@ -436,13 +603,15 @@ class EventStates(StatesGroup):
     waiting_for_location = State()
     waiting_for_max_participants = State()
 
+
 # Инициализация базы данных
 db = Database()
+
 
 # Функция для получения главной клавиатуры
 def get_main_keyboard(user_id):
     keyboard = InlineKeyboardMarkup(row_width=2)
-    
+
     keyboard.add(
         InlineKeyboardButton("📅 Список мероприятий", callback_data="events_list"),
         InlineKeyboardButton("📋 Мои регистрации", callback_data="my_registrations")
@@ -451,7 +620,7 @@ def get_main_keyboard(user_id):
         InlineKeyboardButton("ℹ️ О боте", callback_data="about"),
         InlineKeyboardButton("❓ Помощь", callback_data="help")
     )
-    
+
     if user_id in ADMIN_IDS or db.get_user_role(user_id) == 'admin':
         keyboard.add(
             InlineKeyboardButton("➕ Добавить мероприятие", callback_data="add_event"),
@@ -460,8 +629,9 @@ def get_main_keyboard(user_id):
         keyboard.add(
             InlineKeyboardButton("🔧 Управление", callback_data="admin_panel")
         )
-    
+
     return keyboard
+
 
 # Обработчики команд
 @dp.message_handler(commands=['start'])
@@ -470,9 +640,9 @@ async def cmd_start(message: types.Message):
     username = message.from_user.username or ''
     first_name = message.from_user.first_name or ''
     last_name = message.from_user.last_name or ''
-    
+
     db.add_user(user_id, username, first_name, last_name)
-    
+
     greeting = f"👋 Здравствуйте, {first_name}!\n\n"
     greeting += "Я бот для выбора мероприятий и экскурсий для школьников.\n"
     greeting += "С моей помощью вы можете:\n"
@@ -481,8 +651,9 @@ async def cmd_start(message: types.Message):
     greeting += "• Давать согласие родителей\n"
     greeting += "• Отменять регистрацию\n\n"
     greeting += "Выберите действие:"
-    
+
     await message.answer(greeting, reply_markup=get_main_keyboard(user_id))
+
 
 @dp.message_handler(commands=['help'])
 async def cmd_help(message: types.Message):
@@ -499,42 +670,45 @@ async def cmd_help(message: types.Message):
     help_text += "3. Зарегистрируйтесь и подтвердите согласие родителей\n"
     help_text += "4. При необходимости можно отменить регистрацию\n\n"
     help_text += "Если у вас возникли проблемы, обратитесь к администратору."
-    
+
     await message.answer(help_text, parse_mode=types.ParseMode.HTML)
+
 
 @dp.message_handler(commands=['menu'])
 async def cmd_menu(message: types.Message):
     await message.answer("Главное меню:", reply_markup=get_main_keyboard(message.from_user.id))
 
+
 @dp.message_handler(commands=['events'])
 async def cmd_events(message: types.Message):
     events = db.get_all_events()
-    
+
     if not events:
-        await message.answer("📭 На данный момент нет доступных мероприятий.", 
-                           reply_markup=get_back_to_menu_keyboard())
+        await message.answer("📭 На данный момент нет доступных мероприятий.",
+                             reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     keyboard = InlineKeyboardMarkup(row_width=1)
     for event in events:
         status = "✅ Есть места" if event['current_participants'] < event['max_participants'] else "❌ Мест нет"
         button_text = f"{event['title']} ({event['date']}) - {status}"
         keyboard.add(InlineKeyboardButton(button_text, callback_data=f"event_{event['id']}"))
-    
+
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
     await message.answer("📅 Доступные мероприятия:", reply_markup=keyboard)
+
 
 @dp.message_handler(commands=['my_events'])
 async def cmd_my_events(message: types.Message):
     registrations = db.get_user_registrations(message.from_user.id)
-    
+
     if not registrations:
-        await message.answer("📭 У вас нет активных регистраций.", 
-                           reply_markup=get_back_to_menu_keyboard())
+        await message.answer("📭 У вас нет активных регистраций.",
+                             reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     response = "📋 <b>Ваши регистрации:</b>\n\n"
-    
+
     for reg in registrations:
         event = db.get_event(reg['event_id'])
         if event:
@@ -543,96 +717,99 @@ async def cmd_my_events(message: types.Message):
             response += f"{status_emoji} <b>{event['title']}</b>\n"
             response += f"   Дата: {event['date']}\n"
             response += f"   Статус: {status_text}\n\n"
-    
+
     keyboard = InlineKeyboardMarkup().add(
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
+
     await message.answer(response, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
+
 
 # Обработчики callback-запросов
 @dp.callback_query_handler(lambda c: c.data == "events_list")
 async def process_events_list(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    
+
     events = db.get_all_events()
-    
+
     if not events:
-        await bot.send_message(callback_query.from_user.id, 
-                             "📭 На данный момент нет доступных мероприятий.",
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(callback_query.from_user.id,
+                               "📭 На данный момент нет доступных мероприятий.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     keyboard = InlineKeyboardMarkup(row_width=1)
     for event in events:
         status = "✅ Есть места" if event['current_participants'] < event['max_participants'] else "❌ Мест нет"
         button_text = f"{event['title']} ({event['date']}) - {status}"
         keyboard.add(InlineKeyboardButton(button_text, callback_data=f"event_{event['id']}"))
-    
+
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
-    await bot.send_message(callback_query.from_user.id, 
-                         "📅 Доступные мероприятия:", 
-                         reply_markup=keyboard)
+
+    await bot.send_message(callback_query.from_user.id,
+                           "📅 Доступные мероприятия:",
+                           reply_markup=keyboard)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("event_"))
 async def process_event_detail(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    
+
     event_id = int(callback_query.data.split("_")[1])
     event = db.get_event(event_id)
-    
+
     if not event:
-        await bot.send_message(callback_query.from_user.id, 
-                             "Мероприятие не найдено.",
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(callback_query.from_user.id,
+                               "Мероприятие не найдено.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     event_card = f"🎫 <b>{event['title']}</b>\n\n"
     event_card += f"📝 {event['description']}\n\n"
     event_card += f"📅 Дата: {event['date']}\n"
     event_card += f"⏰ Время: {event['time']}\n"
     event_card += f"📍 Место: {event['location']}\n"
     event_card += f"👥 Участники: {event['current_participants']}/{event['max_participants']}\n\n"
-    
+
     if event['current_participants'] >= event['max_participants']:
         event_card += "❌ <b>Мест нет</b>"
     else:
         event_card += "✅ <b>Есть свободные места</b>"
-    
+
     keyboard = InlineKeyboardMarkup(row_width=2)
-    
+
     user_registrations = db.get_user_registrations(callback_query.from_user.id)
     is_registered = any(reg['event_id'] == event_id for reg in user_registrations)
-    
+
     if not is_registered and event['current_participants'] < event['max_participants']:
         keyboard.add(InlineKeyboardButton("📝 Записаться", callback_data=f"register_{event_id}"))
     elif is_registered:
         keyboard.add(InlineKeyboardButton("❌ Отменить запись", callback_data=f"cancel_my_reg_{event_id}"))
-    
+
     user_id = callback_query.from_user.id
     if user_id in ADMIN_IDS or db.get_user_role(user_id) == 'admin':
         keyboard.add(InlineKeyboardButton("🔧 Управление", callback_data=f"admin_event_{event_id}"))
-    
+
     keyboard.add(
         InlineKeyboardButton("« К списку", callback_data="events_list"),
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
-    await bot.send_message(callback_query.from_user.id, 
-                         event_card, 
-                         reply_markup=keyboard,
-                         parse_mode=types.ParseMode.HTML)
+
+    await bot.send_message(callback_query.from_user.id,
+                           event_card,
+                           reply_markup=keyboard,
+                           parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("register_"))
 async def process_register(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    
+
     event_id = int(callback_query.data.split("_")[1])
     user_id = callback_query.from_user.id
-    
+
     success, message = db.register_for_event(user_id, event_id)
-    
+
     if success:
         keyboard = InlineKeyboardMarkup(row_width=2)
         keyboard.add(
@@ -640,28 +817,51 @@ async def process_register(callback_query: CallbackQuery):
             InlineKeyboardButton("❌ Нет", callback_data=f"consent_no_{event_id}")
         )
         keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-        
-        await bot.send_message(user_id, 
-                             "👪 <b>Требуется согласие родителей</b>\n\n"
-                             "Для участия в мероприятии необходимо согласие родителей.\n\n"
-                             "Вы даете согласие?",
-                             reply_markup=keyboard,
-                             parse_mode=types.ParseMode.HTML)
+
+        await bot.send_message(user_id,
+                               "👪 <b>Требуется согласие родителей</b>\n\n"
+                               "Для участия в мероприятии необходимо согласие родителей.\n\n"
+                               "Вы даете согласие?",
+                               reply_markup=keyboard,
+                               parse_mode=types.ParseMode.HTML)
     else:
-        await bot.send_message(user_id, f"❌ {message}", 
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(user_id, f"❌ {message}",
+                               reply_markup=get_back_to_menu_keyboard())
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("consent_"))
 async def process_parent_consent(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    
+
+    # Разбираем callback_data
+    # Формат: consent_yes_123 или consent_no_123
     parts = callback_query.data.split("_")
-    consent = parts[1]
-    event_id = int(parts[2])
+
+    if len(parts) < 3:
+        await bot.send_message(callback_query.from_user.id,
+                               "❌ Ошибка в обработке запроса.",
+                               reply_markup=get_back_to_menu_keyboard())
+        return
+
+    consent = parts[1]  # "yes" или "no"
+
+    try:
+        event_id = int(parts[2])
+    except ValueError:
+        await bot.send_message(callback_query.from_user.id,
+                               "❌ Ошибка в идентификаторе мероприятия.",
+                               reply_markup=get_back_to_menu_keyboard())
+        return
+
     user_id = callback_query.from_user.id
-    
+
+    # Сохраняем согласие
     db.save_parent_consent(user_id, event_id, consent)
-    
+
+    # Получаем информацию о мероприятии для сообщения
+    event = db.get_event(event_id)
+    event_title = event['title'] if event else "Мероприятие"
+
     # Создаем клавиатуру с кнопками
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
@@ -669,77 +869,100 @@ async def process_parent_consent(callback_query: CallbackQuery):
         InlineKeyboardButton("📋 Мои регистрации", callback_data="my_registrations")
     )
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
+
     if consent == 'yes':
         await bot.send_message(callback_query.from_user.id,
-                             "✅ <b>Спасибо!</b>\n\n"
-                             "Согласие родителей получено.\n"
-                             "Вы успешно зарегистрированы на мероприятие.",
-                             reply_markup=keyboard,
-                             parse_mode=types.ParseMode.HTML)
+                               f"✅ <b>Спасибо!</b>\n\n"
+                               f"Согласие родителей получено.\n"
+                               f"Вы успешно зарегистрированы на мероприятие:\n"
+                               f"🎫 {event_title}",
+                               reply_markup=keyboard,
+                               parse_mode=types.ParseMode.HTML)
+
+        # Уведомляем администраторов
+        for admin_id in ADMIN_IDS:
+            try:
+                user = callback_query.from_user
+                user_name = user.full_name or f"@{user.username}" or f"ID: {user.id}"
+                await bot.send_message(admin_id,
+                                       f"✅ Пользователь дал согласие\n\n"
+                                       f"Мероприятие: {event_title}\n"
+                                       f"Пользователь: {user_name}\n"
+                                       f"ID: {user.id}")
+            except:
+                pass
     else:
         await bot.send_message(callback_query.from_user.id,
-                             "❌ <b>Регистрация отменена</b>\n\n"
-                             "Для участия в мероприятии требуется согласие родителей.",
-                             reply_markup=keyboard,
-                             parse_mode=types.ParseMode.HTML)
+                               f"❌ <b>Регистрация отменена</b>\n\n"
+                               f"Для участия в мероприятии требуется согласие родителей.\n"
+                               f"Вы можете записаться на другое мероприятие.",
+                               reply_markup=keyboard,
+                               parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("cancel_my_reg_"))
 async def process_cancel_my_registration(callback_query: CallbackQuery):
     event_id = int(callback_query.data.split("_")[3])
     user_id = callback_query.from_user.id
     event = db.get_event(event_id)
-    
+
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("✅ Да, отменить", callback_data=f"confirm_my_cancel_{event_id}"),
         InlineKeyboardButton("❌ Нет", callback_data=f"event_{event_id}")
     )
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
+
     await bot.send_message(user_id,
-                         f"❓ Вы уверены, что хотите отменить регистрацию?\n\n"
-                         f"🎫 {event['title']}\n"
-                         f"📅 {event['date']}",
-                         reply_markup=keyboard)
+                           f"❓ Вы уверены, что хотите отменить регистрацию?\n\n"
+                           f"🎫 {event['title']}\n"
+                           f"📅 {event['date']}",
+                           reply_markup=keyboard)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("confirm_my_cancel_"))
 async def process_confirm_my_cancel(callback_query: CallbackQuery):
     event_id = int(callback_query.data.split("_")[3])
     user_id = callback_query.from_user.id
-    
+
+    # Получаем статус до отмены
+    old_status = db.get_registration_status(user_id, event_id)
+
     success, message = db.cancel_registration(user_id, event_id)
-    
+
     keyboard = get_back_to_menu_keyboard()
-    
+
     if success:
         await bot.send_message(user_id, f"✅ {message}", reply_markup=keyboard)
-        
+
+        # Уведомляем администраторов
         for admin_id in ADMIN_IDS:
             try:
+                status_text = "подтвержденную" if old_status == 'confirmed' else "ожидающую"
                 await bot.send_message(admin_id,
-                                     f"👤 Пользователь отменил регистрацию\n\n"
-                                     f"Мероприятие ID: {event_id}\n"
-                                     f"Пользователь ID: {user_id}")
+                                       f"👤 Пользователь отменил {status_text} регистрацию\n\n"
+                                       f"Мероприятие ID: {event_id}\n"
+                                       f"Пользователь ID: {user_id}")
             except:
                 pass
     else:
         await bot.send_message(user_id, f"❌ {message}", reply_markup=keyboard)
 
+
 @dp.callback_query_handler(lambda c: c.data == "my_registrations")
 async def process_my_registrations(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    
+
     registrations = db.get_user_registrations(callback_query.from_user.id)
-    
+
     if not registrations:
-        await bot.send_message(callback_query.from_user.id, 
-                             "📭 У вас нет активных регистраций.",
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(callback_query.from_user.id,
+                               "📭 У вас нет активных регистраций.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     response = "📋 <b>Ваши регистрации:</b>\n\n"
-    
+
     for reg in registrations:
         event = db.get_event(reg['event_id'])
         if event:
@@ -748,20 +971,21 @@ async def process_my_registrations(callback_query: CallbackQuery):
             response += f"{status_emoji} <b>{event['title']}</b>\n"
             response += f"   Дата: {event['date']}\n"
             response += f"   Статус: {status_text}\n\n"
-    
+
     keyboard = InlineKeyboardMarkup().add(
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
-    await bot.send_message(callback_query.from_user.id, 
-                         response, 
-                         reply_markup=keyboard,
-                         parse_mode=types.ParseMode.HTML)
+
+    await bot.send_message(callback_query.from_user.id,
+                           response,
+                           reply_markup=keyboard,
+                           parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data == "about")
 async def process_about(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    
+
     about_text = "ℹ️ <b>О боте</b>\n\n"
     about_text += "Бот для организации мероприятий и экскурсий для школьников.\n\n"
     about_text += "<b>Возможности:</b>\n"
@@ -778,39 +1002,42 @@ async def process_about(callback_query: CallbackQuery):
     about_text += "• /events - Список мероприятий\n"
     about_text += "• /my_events - Мои регистрации\n\n"
     about_text += "Версия: 2.0"
-    
+
     keyboard = InlineKeyboardMarkup().add(
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
-    await bot.send_message(callback_query.from_user.id, 
-                         about_text, 
-                         reply_markup=keyboard,
-                         parse_mode=types.ParseMode.HTML)
+
+    await bot.send_message(callback_query.from_user.id,
+                           about_text,
+                           reply_markup=keyboard,
+                           parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data == "help")
 async def process_help(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await cmd_help(callback_query.message)
 
+
 @dp.callback_query_handler(lambda c: c.data == "back_to_menu")
 async def process_back_to_menu(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, 
-                         "Главное меню:", 
-                         reply_markup=get_main_keyboard(callback_query.from_user.id))
+    await bot.send_message(callback_query.from_user.id,
+                           "Главное меню:",
+                           reply_markup=get_main_keyboard(callback_query.from_user.id))
+
 
 # Административные функции
 @dp.callback_query_handler(lambda c: c.data == "admin_panel")
 async def process_admin_panel(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
         await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
         return
-    
+
     text = "🔧 <b>Панель администратора</b>\n\nВыберите действие:"
-    
+
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("📅 Все мероприятия", callback_data="events_list"),
@@ -823,13 +1050,14 @@ async def process_admin_panel(callback_query: CallbackQuery):
     keyboard.add(
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
+
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data == "stats")
 async def process_stats(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     events = db.get_all_events()
     users_count = 0
     try:
@@ -837,167 +1065,169 @@ async def process_stats(callback_query: CallbackQuery):
             users_count = len(f.readlines()) - 1
     except:
         pass
-    
+
     total_registrations = len(db.get_all_registrations())
     confirmed_registrations = sum(1 for r in db.get_all_registrations() if r['status'] == 'confirmed')
-    
+
     text = "📊 <b>Статистика бота</b>\n\n"
     text += f"👥 Пользователей: {users_count}\n"
     text += f"📅 Мероприятий: {len(events)}\n"
     text += f"📝 Всего регистраций: {total_registrations}\n"
     text += f"✅ Подтвержденных: {confirmed_registrations}\n"
-    
+
     keyboard = InlineKeyboardMarkup().add(
         InlineKeyboardButton("« Назад", callback_data="admin_panel"),
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
+
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data == "add_event")
 async def process_add_event(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
         await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
         return
-    
+
     await bot.answer_callback_query(callback_query.id)
-    
-    # Отправляем информационное сообщение с примерами
+
     info_text = "➕ <b>Добавление нового мероприятия</b>\n\n"
     info_text += "<b>Форматы ввода:</b>\n"
     info_text += "• 📅 Дата: <code>ДД.ММ.ГГГГ</code> (например: 25.12.2024)\n"
     info_text += "• ⏰ Время: <code>ЧЧ:ММ</code> (например: 14:30)\n"
     info_text += "• 👥 Количество участников: целое число\n\n"
     info_text += "Сейчас введите <b>название мероприятия</b>:"
-    
-    await bot.send_message(user_id, 
-                         info_text,
-                         reply_markup=get_back_to_menu_keyboard(),
-                         parse_mode=types.ParseMode.HTML)
+
+    await bot.send_message(user_id,
+                           info_text,
+                           reply_markup=get_back_to_menu_keyboard(),
+                           parse_mode=types.ParseMode.HTML)
     await EventStates.waiting_for_title.set()
+
 
 @dp.message_handler(state=EventStates.waiting_for_title)
 async def process_event_title(message: types.Message, state: FSMContext):
     if not message.text or len(message.text.strip()) < 3:
         await message.answer("❌ Название должно содержать хотя бы 3 символа.\n"
-                           "Пожалуйста, введите название еще раз:",
-                           reply_markup=get_back_to_menu_keyboard())
+                             "Пожалуйста, введите название еще раз:",
+                             reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     async with state.proxy() as data:
         data['title'] = message.text.strip()
-    
+
     await message.answer("✅ Название принято!\n\n"
-                        "Введите описание мероприятия:",
-                        reply_markup=get_back_to_menu_keyboard())
+                         "Введите описание мероприятия:",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_description.set()
+
 
 @dp.message_handler(state=EventStates.waiting_for_description)
 async def process_event_description(message: types.Message, state: FSMContext):
     if not message.text or len(message.text.strip()) < 5:
         await message.answer("❌ Описание должно содержать хотя бы 5 символов.\n"
-                           "Пожалуйста, введите описание еще раз:",
-                           reply_markup=get_back_to_menu_keyboard())
+                             "Пожалуйста, введите описание еще раз:",
+                             reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     async with state.proxy() as data:
         data['description'] = message.text.strip()
-    
+
     examples = "✅ <b>Примеры правильных дат:</b>\n"
     examples += "• 25.12.2024\n"
     examples += "• 01.02.2024\n"
     examples += "• 15.05.2025\n\n"
-    
+
     await message.answer("✅ Описание принято!\n\n"
-                        f"{examples}"
-                        "Введите дату мероприятия в формате ДД.ММ.ГГГГ:",
-                        reply_markup=get_back_to_menu_keyboard(),
-                        parse_mode=types.ParseMode.HTML)
+                         f"{examples}"
+                         "Введите дату мероприятия в формате ДД.ММ.ГГГГ:",
+                         reply_markup=get_back_to_menu_keyboard(),
+                         parse_mode=types.ParseMode.HTML)
     await EventStates.waiting_for_date.set()
+
 
 @dp.message_handler(state=EventStates.waiting_for_date)
 async def process_event_date(message: types.Message, state: FSMContext):
     date_str = message.text.strip()
-    
-    # Проверяем формат даты
+
     is_valid, error_message = validate_date(date_str)
-    
+
     if not is_valid:
-        # Показываем примеры правильных дат
         examples = "✅ <b>Примеры правильных дат:</b>\n"
         examples += "• 25.12.2024\n"
         examples += "• 01.02.2024\n"
         examples += "• 15.05.2025\n\n"
-        
+
         await message.answer(f"❌ {error_message}\n\n"
-                           f"{examples}"
-                           "Пожалуйста, введите дату еще раз:",
-                           reply_markup=get_back_to_menu_keyboard(),
-                           parse_mode=types.ParseMode.HTML)
+                             f"{examples}"
+                             "Пожалуйста, введите дату еще раз:",
+                             reply_markup=get_back_to_menu_keyboard(),
+                             parse_mode=types.ParseMode.HTML)
         return
-    
+
     async with state.proxy() as data:
         data['date'] = date_str
-    
-    # Показываем примеры правильного времени
+
     time_examples = "✅ <b>Примеры правильного времени:</b>\n"
     time_examples += "• 09:00\n"
     time_examples += "• 14:30\n"
     time_examples += "• 18:45\n\n"
-    
+
     await message.answer("✅ Дата принята!\n\n"
-                        f"{time_examples}"
-                        "Введите время мероприятия в формате ЧЧ:ММ:",
-                        reply_markup=get_back_to_menu_keyboard(),
-                        parse_mode=types.ParseMode.HTML)
+                         f"{time_examples}"
+                         "Введите время мероприятия в формате ЧЧ:ММ:",
+                         reply_markup=get_back_to_menu_keyboard(),
+                         parse_mode=types.ParseMode.HTML)
     await EventStates.waiting_for_time.set()
+
 
 @dp.message_handler(state=EventStates.waiting_for_time)
 async def process_event_time(message: types.Message, state: FSMContext):
     time_str = message.text.strip()
-    
-    # Проверяем формат времени
+
     is_valid, error_message = validate_time(time_str)
-    
+
     if not is_valid:
         examples = "✅ <b>Примеры правильного времени:</b>\n"
         examples += "• 09:00\n"
         examples += "• 14:30\n"
         examples += "• 18:45\n\n"
-        
+
         await message.answer(f"❌ {error_message}\n\n"
-                           f"{examples}"
-                           "Пожалуйста, введите время еще раз:",
-                           reply_markup=get_back_to_menu_keyboard(),
-                           parse_mode=types.ParseMode.HTML)
+                             f"{examples}"
+                             "Пожалуйста, введите время еще раз:",
+                             reply_markup=get_back_to_menu_keyboard(),
+                             parse_mode=types.ParseMode.HTML)
         return
-    
+
     async with state.proxy() as data:
         data['time'] = time_str
-    
+
     await message.answer("✅ Время принято!\n\n"
-                        "Введите место проведения:",
-                        reply_markup=get_back_to_menu_keyboard())
+                         "Введите место проведения:",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_location.set()
+
 
 @dp.message_handler(state=EventStates.waiting_for_location)
 async def process_event_location(message: types.Message, state: FSMContext):
     if not message.text or len(message.text.strip()) < 3:
         await message.answer("❌ Место проведения должно содержать хотя бы 3 символа.\n"
-                           "Пожалуйста, введите место еще раз:",
-                           reply_markup=get_back_to_menu_keyboard())
+                             "Пожалуйста, введите место еще раз:",
+                             reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     async with state.proxy() as data:
         data['location'] = message.text.strip()
-    
+
     await message.answer("✅ Место принято!\n\n"
-                        "Введите максимальное количество участников (число от 1 до 100):\n"
-                        "Например: 20",
-                        reply_markup=get_back_to_menu_keyboard())
+                         "Введите максимальное количество участников (число от 1 до 100):\n"
+                         "Например: 20",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_max_participants.set()
+
 
 @dp.message_handler(state=EventStates.waiting_for_max_participants)
 async def process_event_max_participants(message: types.Message, state: FSMContext):
@@ -1005,20 +1235,20 @@ async def process_event_max_participants(message: types.Message, state: FSMConte
         max_participants = int(message.text.strip())
         if max_participants <= 0:
             await message.answer("❌ Количество участников должно быть положительным числом.\n"
-                               "Пожалуйста, введите число еще раз:",
-                               reply_markup=get_back_to_menu_keyboard())
+                                 "Пожалуйста, введите число еще раз:",
+                                 reply_markup=get_back_to_menu_keyboard())
             return
         if max_participants > 100:
             await message.answer("❌ Максимальное количество участников не может превышать 100.\n"
-                               "Пожалуйста, введите число от 1 до 100:",
-                               reply_markup=get_back_to_menu_keyboard())
+                                 "Пожалуйста, введите число от 1 до 100:",
+                                 reply_markup=get_back_to_menu_keyboard())
             return
     except ValueError:
         await message.answer("❌ Пожалуйста, введите целое число.\n"
-                           "Например: 20",
-                           reply_markup=get_back_to_menu_keyboard())
+                             "Например: 20",
+                             reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     async with state.proxy() as data:
         event_id = db.add_event(
             data['title'],
@@ -1028,15 +1258,14 @@ async def process_event_max_participants(message: types.Message, state: FSMConte
             data['location'],
             max_participants
         )
-    
-    # Создаем клавиатуру с кнопками действий
+
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("📅 К списку мероприятий", callback_data="events_list"),
         InlineKeyboardButton("➕ Добавить еще", callback_data="add_event")
     )
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
+
     await message.answer(f"✅ <b>Мероприятие успешно создано!</b>\n\n"
                          f"ID мероприятия: {event_id}\n"
                          f"Название: {data['title']}\n"
@@ -1048,58 +1277,60 @@ async def process_event_max_participants(message: types.Message, state: FSMConte
                          parse_mode=types.ParseMode.HTML)
     await state.finish()
 
+
 @dp.callback_query_handler(lambda c: c.data == "reports")
 async def process_reports(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
         await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
         return
-    
+
     await bot.answer_callback_query(callback_query.id)
-    
+
     events = db.get_all_events()
-    
+
     if not events:
         await bot.send_message(user_id, "📭 Нет мероприятий для формирования отчетов.",
-                             reply_markup=get_back_to_menu_keyboard())
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     keyboard = InlineKeyboardMarkup(row_width=1)
     for event in events:
         participants = db.get_event_participants(event['id'])
         count = len(participants)
         button_text = f"{event['title']} ({event['date']}) - {count} уч."
         keyboard.add(InlineKeyboardButton(button_text, callback_data=f"report_{event['id']}"))
-    
+
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
-    await bot.send_message(user_id, 
-                         "📊 <b>Выберите мероприятие для выгрузки списка участников:</b>",
-                         reply_markup=keyboard,
-                         parse_mode=types.ParseMode.HTML)
+
+    await bot.send_message(user_id,
+                           "📊 <b>Выберите мероприятие для выгрузки списка участников:</b>",
+                           reply_markup=keyboard,
+                           parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("report_"))
 async def process_event_report(callback_query: CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    
+
     event_id = int(callback_query.data.split("_")[1])
     event = db.get_event(event_id)
-    
+
     if not event:
-        await bot.send_message(callback_query.from_user.id, 
-                             "Мероприятие не найдено.",
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(callback_query.from_user.id,
+                               "Мероприятие не найдено.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     participants = db.get_event_participants(event_id)
-    
+
     if not participants:
         await bot.send_message(callback_query.from_user.id,
-                             f"На мероприятие '{event['title']}' еще никто не записался.",
-                             reply_markup=get_back_to_menu_keyboard())
+                               f"На мероприятие '{event['title']}' еще никто не записался.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
+
     report = f"📊 ОТЧЕТ ПО МЕРОПРИЯТИЮ\n"
     report += "=" * 50 + "\n\n"
     report += f"📌 Название: {event['title']}\n"
@@ -1112,212 +1343,309 @@ async def process_event_report(callback_query: CallbackQuery):
     report += f"❌ Свободно мест: {event['max_participants'] - len(participants)}\n\n"
     report += "СПИСОК УЧАСТНИКОВ:\n"
     report += "-" * 50 + "\n"
-    
+
     for i, participant in enumerate(participants, 1):
         full_name = f"{participant['first_name']} {participant['last_name']}".strip()
         if not full_name:
             full_name = f"@{participant['username']}" if participant['username'] else f"ID: {participant['user_id']}"
-        
+
         report += f"{i}. {full_name}\n"
         if participant['username']:
             report += f"   Telegram: @{participant['username']}\n"
-    
+
     report += "\n" + "=" * 50 + "\n"
     report += f"Дата формирования: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-    
+
     filename = f"otchet_{event['title']}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
     filename = "".join(c for c in filename if c.isalnum() or c in ('._-', ' ')).strip()
-    
+
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(report)
-    
+
     with open(filename, 'rb') as f:
         await bot.send_document(
-            callback_query.from_user.id, 
-            f, 
+            callback_query.from_user.id,
+            f,
             caption=f"📊 Отчет: {event['title']} ({len(participants)} участников)"
         )
-    
+
     os.remove(filename)
-    
+
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("📊 Другой отчет", callback_data="reports"),
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
+
     await bot.send_message(callback_query.from_user.id,
-                         "Что делаем дальше?",
-                         reply_markup=keyboard)
+                           "Что делаем дальше?",
+                           reply_markup=keyboard)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("admin_event_"))
 async def process_admin_event(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
         await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
         return
-    
+
     event_id = int(callback_query.data.split("_")[2])
     event = db.get_event(event_id)
-    
+
     if not event:
-        await bot.send_message(user_id, "Мероприятие не найдено", 
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(user_id, "Мероприятие не найдено",
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
-    participants = db.get_event_participants(event_id)
-    
+
+    confirmed_participants = db.get_event_participants(event_id)
+    pending_count = len(db.get_pending_registrations(event_id))
+
     text = f"🔧 <b>Управление мероприятием</b>\n\n"
     text += f"🎫 <b>{event['title']}</b>\n"
     text += f"📅 {event['date']} в {event['time']}\n"
-    text += f"👥 Участников: {len(participants)}/{event['max_participants']}\n\n"
+    text += f"✅ Подтверждено: {len(confirmed_participants)}/{event['max_participants']}\n"
+    text += f"⏳ Ожидают согласия: {pending_count}\n\n"
     text += "Выберите действие:"
-    
+
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
-        InlineKeyboardButton("📋 Список участников", callback_data=f"view_participants_{event_id}"),
+        InlineKeyboardButton("📋 Подтвержденные", callback_data=f"view_participants_{event_id}"),
+        InlineKeyboardButton("⏳ Ожидают согласия", callback_data=f"view_pending_{event_id}")
+    )
+    keyboard.add(
         InlineKeyboardButton("❌ Удалить мероприятие", callback_data=f"delete_event_{event_id}")
     )
     keyboard.add(
         InlineKeyboardButton("« К списку", callback_data="events_list"),
         InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
-    
+
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("view_participants_"))
 async def process_view_participants(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
         await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
         return
-    
+
     event_id = int(callback_query.data.split("_")[2])
     event = db.get_event(event_id)
     participants = db.get_event_participants(event_id)
-    
+
     if not participants:
-        await bot.send_message(user_id, 
-                             f"На мероприятие '{event['title']}' никто не записался",
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(user_id,
+                               f"На мероприятие '{event['title']}' нет подтвержденных участников.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
-    
-    text = f"📋 <b>Участники мероприятия: {event['title']}</b>\n\n"
-    
+
+    text = f"📋 <b>Подтвержденные участники: {event['title']}</b>\n\n"
+
     keyboard = InlineKeyboardMarkup(row_width=1)
     for i, participant in enumerate(participants, 1):
         full_name = f"{participant['first_name']} {participant['last_name']}".strip()
         if not full_name:
             full_name = f"@{participant['username']}" if participant['username'] else f"ID: {participant['user_id']}"
-        
+
         text += f"{i}. {full_name}\n"
         if participant['username']:
             text += f"   📱 @{participant['username']}\n"
-        
+
         keyboard.add(InlineKeyboardButton(
-            f"❌ Отменить: {full_name[:20]}", 
+            f"❌ Отменить: {full_name[:20]}",
             callback_data=f"admin_cancel_{event_id}_{participant['user_id']}"
         ))
-    
+
     keyboard.add(InlineKeyboardButton("« Назад", callback_data=f"admin_event_{event_id}"))
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
+
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("view_pending_"))
+async def process_view_pending(callback_query: CallbackQuery):
+    """Просмотр пользователей с ожидающим согласием"""
+    user_id = callback_query.from_user.id
+
+    if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
+        await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
+        return
+
+    event_id = int(callback_query.data.split("_")[2])
+    event = db.get_event(event_id)
+    pending_users = db.get_pending_registrations(event_id)
+
+    if not pending_users:
+        await bot.send_message(user_id,
+                               f"На мероприятие '{event['title']}' нет пользователей с ожидающим согласием.",
+                               reply_markup=get_back_to_menu_keyboard())
+        return
+
+    text = f"⏳ <b>Ожидают согласия: {event['title']}</b>\n\n"
+
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    for i, user in enumerate(pending_users, 1):
+        full_name = f"{user['first_name']} {user['last_name']}".strip()
+        if not full_name:
+            full_name = f"@{user['username']}" if user['username'] else f"ID: {user['user_id']}"
+
+        text += f"{i}. {full_name}\n"
+        if user['username']:
+            text += f"   📱 @{user['username']}\n"
+        text += f"   📅 Заявка от: {user['registration_date'][:10]}\n\n"
+
+        keyboard.add(InlineKeyboardButton(
+            f"🔄 Запросить повторно: {full_name[:20]}",
+            callback_data=f"ask_consent_again_{event_id}_{user['user_id']}"
+        ))
+
+    keyboard.add(InlineKeyboardButton("« Назад", callback_data=f"admin_event_{event_id}"))
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
+
+    await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("ask_consent_again_"))
+async def process_ask_consent_again(callback_query: CallbackQuery):
+    """Повторный запрос согласия у пользователя"""
+    admin_id = callback_query.from_user.id
+
+    if admin_id not in ADMIN_IDS and db.get_user_role(admin_id) != 'admin':
+        await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
+        return
+
+    parts = callback_query.data.split("_")
+    event_id = int(parts[3])
+    participant_id = int(parts[4])
+
+    event = db.get_event(event_id)
+
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("✅ Да", callback_data=f"consent_yes_{event_id}"),
+        InlineKeyboardButton("❌ Нет", callback_data=f"consent_no_{event_id}")
+    )
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
+
+    try:
+        await bot.send_message(participant_id,
+                               f"📬 <b>Напоминание от организаторов</b>\n\n"
+                               f"Вы зарегистрировались на мероприятие:\n"
+                               f"🎫 {event['title']}\n"
+                               f"📅 {event['date']} в {event['time']}\n\n"
+                               f"Для подтверждения участия требуется согласие родителей.\n\n"
+                               f"Вы даете согласие?",
+                               reply_markup=keyboard,
+                               parse_mode=types.ParseMode.HTML)
+
+        await bot.send_message(admin_id,
+                               f"✅ Запрос на согласие отправлен пользователю.",
+                               reply_markup=get_back_to_menu_keyboard())
+    except Exception as e:
+        await bot.send_message(admin_id,
+                               f"❌ Не удалось отправить сообщение пользователю. Возможно, он заблокировал бота.",
+                               reply_markup=get_back_to_menu_keyboard())
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("admin_cancel_"))
 async def process_admin_cancel_registration(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
         await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
         return
-    
+
     parts = callback_query.data.split("_")
     event_id = int(parts[2])
     participant_id = int(parts[3])
-    
+
     event = db.get_event(event_id)
-    
+
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("✅ Да, отменить", callback_data=f"confirm_admin_cancel_{event_id}_{participant_id}"),
         InlineKeyboardButton("❌ Нет", callback_data=f"view_participants_{event_id}")
     )
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
+
     await bot.send_message(user_id,
-                         f"❓ Вы уверены, что хотите отменить регистрацию участника?\n\n"
-                         f"Мероприятие: {event['title']}",
-                         reply_markup=keyboard)
+                           f"❓ Вы уверены, что хотите отменить регистрацию участника?\n\n"
+                           f"Мероприятие: {event['title']}",
+                           reply_markup=keyboard)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("confirm_admin_cancel_"))
 async def process_confirm_admin_cancel(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     parts = callback_query.data.split("_")
     event_id = int(parts[3])
     participant_id = int(parts[4])
-    
+
     success, message = db.cancel_registration(participant_id, event_id)
-    
+
     if success:
         try:
             await bot.send_message(participant_id,
-                                 f"⚠️ <b>Внимание!</b>\n\n"
-                                 f"Ваша регистрация на мероприятие была отменена администратором.",
-                                 reply_markup=get_back_to_menu_keyboard(),
-                                 parse_mode=types.ParseMode.HTML)
+                                   f"⚠️ <b>Внимание!</b>\n\n"
+                                   f"Ваша регистрация на мероприятие была отменена администратором.",
+                                   reply_markup=get_back_to_menu_keyboard(),
+                                   parse_mode=types.ParseMode.HTML)
         except:
             pass
-        
+
         await bot.send_message(user_id, f"✅ {message}")
         await process_view_participants(callback_query)
     else:
-        await bot.send_message(user_id, f"❌ {message}", 
-                             reply_markup=get_back_to_menu_keyboard())
+        await bot.send_message(user_id, f"❌ {message}",
+                               reply_markup=get_back_to_menu_keyboard())
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("delete_event_"))
 async def process_delete_event(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    
+
     if user_id not in ADMIN_IDS and db.get_user_role(user_id) != 'admin':
         await bot.answer_callback_query(callback_query.id, "У вас нет прав администратора", show_alert=True)
         return
-    
+
     event_id = int(callback_query.data.split("_")[2])
     event = db.get_event(event_id)
-    
+
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("✅ Да, удалить", callback_data=f"confirm_delete_{event_id}"),
         InlineKeyboardButton("❌ Нет", callback_data=f"admin_event_{event_id}")
     )
     keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
-    
+
     await bot.send_message(user_id,
-                         f"❓ <b>Вы уверены, что хотите удалить мероприятие?</b>\n\n"
-                         f"🎫 {event['title']}\n"
-                         f"📅 {event['date']}\n\n"
-                         f"<b>Внимание!</b> Удалить можно только мероприятие без участников.",
-                         reply_markup=keyboard,
-                         parse_mode=types.ParseMode.HTML)
+                           f"❓ <b>Вы уверены, что хотите удалить мероприятие?</b>\n\n"
+                           f"🎫 {event['title']}\n"
+                           f"📅 {event['date']}\n\n"
+                           f"<b>Внимание!</b> Удалить можно только мероприятие без участников.",
+                           reply_markup=keyboard,
+                           parse_mode=types.ParseMode.HTML)
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("confirm_delete_"))
 async def process_confirm_delete(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     event_id = int(callback_query.data.split("_")[2])
-    
+
     success, message = db.delete_event(event_id)
-    
+
     keyboard = get_back_to_menu_keyboard()
-    
+
     if success:
         await bot.send_message(user_id, "✅ " + message, reply_markup=keyboard)
         await process_events_list(callback_query)
     else:
         await bot.send_message(user_id, "❌ " + message, reply_markup=keyboard)
+
 
 @dp.message_handler()
 async def handle_unknown(message: types.Message):
@@ -1327,9 +1655,11 @@ async def handle_unknown(message: types.Message):
         reply_markup=get_back_to_menu_keyboard()
     )
 
+
 async def main():
     logging.info("Бот запущен и готов к работе!")
     await dp.start_polling()
+
 
 if __name__ == '__main__':
     asyncio.run(main())
