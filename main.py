@@ -25,6 +25,31 @@ dp = Dispatcher(bot, storage=storage)
 ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
 
 
+# Функция для создания клавиатуры с кнопкой меню
+def get_back_to_menu_keyboard():
+    """Возвращает клавиатуру с кнопкой возврата в меню"""
+    keyboard = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
+    )
+    return keyboard
+
+
+# Функция для создания клавиатуры с кнопкой меню и дополнительными кнопками
+def get_keyboard_with_menu(buttons=None, row_width=2):
+    """Создает клавиатуру с кнопками и кнопкой меню внизу"""
+    keyboard = InlineKeyboardMarkup(row_width=row_width)
+
+    if buttons:
+        for button in buttons:
+            if isinstance(button, list):
+                keyboard.add(*button)
+            else:
+                keyboard.add(button)
+
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
+    return keyboard
+
+
 # Класс для работы с базой данных
 class Database:
     def __init__(self):
@@ -419,7 +444,8 @@ async def cmd_events(message: types.Message):
     events = db.get_all_events()
 
     if not events:
-        await message.answer("📭 На данный момент нет доступных мероприятий.")
+        await message.answer("📭 На данный момент нет доступных мероприятий.",
+                             reply_markup=get_back_to_menu_keyboard())
         return
 
     keyboard = InlineKeyboardMarkup(row_width=1)
@@ -428,7 +454,7 @@ async def cmd_events(message: types.Message):
         button_text = f"{event['title']} ({event['date']}) - {status}"
         keyboard.add(InlineKeyboardButton(button_text, callback_data=f"event_{event['id']}"))
 
-    keyboard.add(InlineKeyboardButton("« В меню", callback_data="back_to_menu"))
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
     await message.answer("📅 Доступные мероприятия:", reply_markup=keyboard)
 
 
@@ -437,7 +463,8 @@ async def cmd_my_events(message: types.Message):
     registrations = db.get_user_registrations(message.from_user.id)
 
     if not registrations:
-        await message.answer("📭 У вас нет активных регистраций.")
+        await message.answer("📭 У вас нет активных регистраций.",
+                             reply_markup=get_back_to_menu_keyboard())
         return
 
     response = "📋 <b>Ваши регистрации:</b>\n\n"
@@ -452,7 +479,7 @@ async def cmd_my_events(message: types.Message):
             response += f"   Статус: {status_text}\n\n"
 
     keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("« В меню", callback_data="back_to_menu")
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await message.answer(response, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
@@ -467,7 +494,8 @@ async def process_events_list(callback_query: CallbackQuery):
 
     if not events:
         await bot.send_message(callback_query.from_user.id,
-                               "📭 На данный момент нет доступных мероприятий.")
+                               "📭 На данный момент нет доступных мероприятий.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     keyboard = InlineKeyboardMarkup(row_width=1)
@@ -476,7 +504,7 @@ async def process_events_list(callback_query: CallbackQuery):
         button_text = f"{event['title']} ({event['date']}) - {status}"
         keyboard.add(InlineKeyboardButton(button_text, callback_data=f"event_{event['id']}"))
 
-    keyboard.add(InlineKeyboardButton("« Назад", callback_data="back_to_menu"))
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
 
     await bot.send_message(callback_query.from_user.id,
                            "📅 Доступные мероприятия:",
@@ -491,7 +519,9 @@ async def process_event_detail(callback_query: CallbackQuery):
     event = db.get_event(event_id)
 
     if not event:
-        await bot.send_message(callback_query.from_user.id, "Мероприятие не найдено.")
+        await bot.send_message(callback_query.from_user.id,
+                               "Мероприятие не найдено.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     event_card = f"🎫 <b>{event['title']}</b>\n\n"
@@ -522,7 +552,7 @@ async def process_event_detail(callback_query: CallbackQuery):
 
     keyboard.add(
         InlineKeyboardButton("« К списку", callback_data="events_list"),
-        InlineKeyboardButton("« В меню", callback_data="back_to_menu")
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await bot.send_message(callback_query.from_user.id,
@@ -546,6 +576,7 @@ async def process_register(callback_query: CallbackQuery):
             InlineKeyboardButton("✅ Да", callback_data=f"consent_yes_{event_id}"),
             InlineKeyboardButton("❌ Нет", callback_data=f"consent_no_{event_id}")
         )
+        keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
 
         await bot.send_message(user_id,
                                "👪 <b>Требуется согласие родителей</b>\n\n"
@@ -554,7 +585,8 @@ async def process_register(callback_query: CallbackQuery):
                                reply_markup=keyboard,
                                parse_mode=types.ParseMode.HTML)
     else:
-        await bot.send_message(user_id, f"❌ {message}")
+        await bot.send_message(user_id, f"❌ {message}",
+                               reply_markup=get_back_to_menu_keyboard())
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith("consent_"))
@@ -568,16 +600,26 @@ async def process_parent_consent(callback_query: CallbackQuery):
 
     db.save_parent_consent(user_id, event_id, consent)
 
+    # Создаем клавиатуру с кнопками
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("📅 К мероприятиям", callback_data="events_list"),
+        InlineKeyboardButton("📋 Мои регистрации", callback_data="my_registrations")
+    )
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
+
     if consent == 'yes':
         await bot.send_message(callback_query.from_user.id,
                                "✅ <b>Спасибо!</b>\n\n"
                                "Согласие родителей получено.\n"
                                "Вы успешно зарегистрированы на мероприятие.",
+                               reply_markup=keyboard,
                                parse_mode=types.ParseMode.HTML)
     else:
         await bot.send_message(callback_query.from_user.id,
                                "❌ <b>Регистрация отменена</b>\n\n"
                                "Для участия в мероприятии требуется согласие родителей.",
+                               reply_markup=keyboard,
                                parse_mode=types.ParseMode.HTML)
 
 
@@ -592,6 +634,7 @@ async def process_cancel_my_registration(callback_query: CallbackQuery):
         InlineKeyboardButton("✅ Да, отменить", callback_data=f"confirm_my_cancel_{event_id}"),
         InlineKeyboardButton("❌ Нет", callback_data=f"event_{event_id}")
     )
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
 
     await bot.send_message(user_id,
                            f"❓ Вы уверены, что хотите отменить регистрацию?\n\n"
@@ -607,8 +650,10 @@ async def process_confirm_my_cancel(callback_query: CallbackQuery):
 
     success, message = db.cancel_registration(user_id, event_id)
 
+    keyboard = get_back_to_menu_keyboard()
+
     if success:
-        await bot.send_message(user_id, f"✅ {message}")
+        await bot.send_message(user_id, f"✅ {message}", reply_markup=keyboard)
 
         for admin_id in ADMIN_IDS:
             try:
@@ -618,10 +663,8 @@ async def process_confirm_my_cancel(callback_query: CallbackQuery):
                                        f"Пользователь ID: {user_id}")
             except:
                 pass
-
-        await process_event_detail(callback_query)
     else:
-        await bot.send_message(user_id, f"❌ {message}")
+        await bot.send_message(user_id, f"❌ {message}", reply_markup=keyboard)
 
 
 @dp.callback_query_handler(lambda c: c.data == "my_registrations")
@@ -631,7 +674,9 @@ async def process_my_registrations(callback_query: CallbackQuery):
     registrations = db.get_user_registrations(callback_query.from_user.id)
 
     if not registrations:
-        await bot.send_message(callback_query.from_user.id, "📭 У вас нет активных регистраций.")
+        await bot.send_message(callback_query.from_user.id,
+                               "📭 У вас нет активных регистраций.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     response = "📋 <b>Ваши регистрации:</b>\n\n"
@@ -646,7 +691,7 @@ async def process_my_registrations(callback_query: CallbackQuery):
             response += f"   Статус: {status_text}\n\n"
 
     keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("« В меню", callback_data="back_to_menu")
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await bot.send_message(callback_query.from_user.id,
@@ -677,7 +722,7 @@ async def process_about(callback_query: CallbackQuery):
     about_text += "Версия: 2.0"
 
     keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("« В меню", callback_data="back_to_menu")
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await bot.send_message(callback_query.from_user.id,
@@ -721,7 +766,7 @@ async def process_admin_panel(callback_query: CallbackQuery):
         InlineKeyboardButton("📋 Статистика", callback_data="stats")
     )
     keyboard.add(
-        InlineKeyboardButton("« В меню", callback_data="back_to_menu")
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
@@ -749,7 +794,8 @@ async def process_stats(callback_query: CallbackQuery):
     text += f"✅ Подтвержденных: {confirmed_registrations}\n"
 
     keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("« Назад", callback_data="admin_panel")
+        InlineKeyboardButton("« Назад", callback_data="admin_panel"),
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
@@ -767,6 +813,7 @@ async def process_add_event(callback_query: CallbackQuery):
     await bot.send_message(user_id,
                            "➕ <b>Добавление нового мероприятия</b>\n\n"
                            "Введите название мероприятия:",
+                           reply_markup=get_back_to_menu_keyboard(),
                            parse_mode=types.ParseMode.HTML)
     await EventStates.waiting_for_title.set()
 
@@ -775,7 +822,8 @@ async def process_add_event(callback_query: CallbackQuery):
 async def process_event_title(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['title'] = message.text
-    await message.answer("Введите описание мероприятия:")
+    await message.answer("Введите описание мероприятия:",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_description.set()
 
 
@@ -783,7 +831,8 @@ async def process_event_title(message: types.Message, state: FSMContext):
 async def process_event_description(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['description'] = message.text
-    await message.answer("Введите дату мероприятия (в формате ДД.ММ.ГГГГ):")
+    await message.answer("Введите дату мероприятия (в формате ДД.ММ.ГГГГ):",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_date.set()
 
 
@@ -791,7 +840,8 @@ async def process_event_description(message: types.Message, state: FSMContext):
 async def process_event_date(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['date'] = message.text
-    await message.answer("Введите время мероприятия (в формате ЧЧ:ММ):")
+    await message.answer("Введите время мероприятия (в формате ЧЧ:ММ):",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_time.set()
 
 
@@ -799,7 +849,8 @@ async def process_event_date(message: types.Message, state: FSMContext):
 async def process_event_time(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['time'] = message.text
-    await message.answer("Введите место проведения:")
+    await message.answer("Введите место проведения:",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_location.set()
 
 
@@ -807,7 +858,8 @@ async def process_event_time(message: types.Message, state: FSMContext):
 async def process_event_location(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['location'] = message.text
-    await message.answer("Введите максимальное количество участников (число):")
+    await message.answer("Введите максимальное количество участников (число):",
+                         reply_markup=get_back_to_menu_keyboard())
     await EventStates.waiting_for_max_participants.set()
 
 
@@ -816,10 +868,12 @@ async def process_event_max_participants(message: types.Message, state: FSMConte
     try:
         max_participants = int(message.text)
         if max_participants <= 0:
-            await message.answer("Пожалуйста, введите положительное число.")
+            await message.answer("Пожалуйста, введите положительное число.",
+                                 reply_markup=get_back_to_menu_keyboard())
             return
     except ValueError:
-        await message.answer("Пожалуйста, введите число.")
+        await message.answer("Пожалуйста, введите число.",
+                             reply_markup=get_back_to_menu_keyboard())
         return
 
     async with state.proxy() as data:
@@ -832,6 +886,14 @@ async def process_event_max_participants(message: types.Message, state: FSMConte
             max_participants
         )
 
+    # Создаем клавиатуру с кнопками действий
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("📅 К списку мероприятий", callback_data="events_list"),
+        InlineKeyboardButton("➕ Добавить еще", callback_data="add_event")
+    )
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
+
     await message.answer(f"✅ <b>Мероприятие успешно создано!</b>\n\n"
                          f"ID мероприятия: {event_id}\n"
                          f"Название: {data['title']}\n"
@@ -839,6 +901,7 @@ async def process_event_max_participants(message: types.Message, state: FSMConte
                          f"Время: {data['time']}\n"
                          f"Место: {data['location']}\n"
                          f"Макс. участников: {max_participants}",
+                         reply_markup=keyboard,
                          parse_mode=types.ParseMode.HTML)
     await state.finish()
 
@@ -856,7 +919,8 @@ async def process_reports(callback_query: CallbackQuery):
     events = db.get_all_events()
 
     if not events:
-        await bot.send_message(user_id, "📭 Нет мероприятий для формирования отчетов.")
+        await bot.send_message(user_id, "📭 Нет мероприятий для формирования отчетов.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     keyboard = InlineKeyboardMarkup(row_width=1)
@@ -866,7 +930,7 @@ async def process_reports(callback_query: CallbackQuery):
         button_text = f"{event['title']} ({event['date']}) - {count} уч."
         keyboard.add(InlineKeyboardButton(button_text, callback_data=f"report_{event['id']}"))
 
-    keyboard.add(InlineKeyboardButton("« Назад", callback_data="back_to_menu"))
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
 
     await bot.send_message(user_id,
                            "📊 <b>Выберите мероприятие для выгрузки списка участников:</b>",
@@ -882,14 +946,17 @@ async def process_event_report(callback_query: CallbackQuery):
     event = db.get_event(event_id)
 
     if not event:
-        await bot.send_message(callback_query.from_user.id, "Мероприятие не найдено.")
+        await bot.send_message(callback_query.from_user.id,
+                               "Мероприятие не найдено.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     participants = db.get_event_participants(event_id)
 
     if not participants:
         await bot.send_message(callback_query.from_user.id,
-                               f"На мероприятие '{event['title']}' еще никто не записался.")
+                               f"На мероприятие '{event['title']}' еще никто не записался.",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     report = f"📊 ОТЧЕТ ПО МЕРОПРИЯТИЮ\n"
@@ -935,7 +1002,7 @@ async def process_event_report(callback_query: CallbackQuery):
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("📊 Другой отчет", callback_data="reports"),
-        InlineKeyboardButton("« В меню", callback_data="back_to_menu")
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await bot.send_message(callback_query.from_user.id,
@@ -955,7 +1022,8 @@ async def process_admin_event(callback_query: CallbackQuery):
     event = db.get_event(event_id)
 
     if not event:
-        await bot.send_message(user_id, "Мероприятие не найдено")
+        await bot.send_message(user_id, "Мероприятие не найдено",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     participants = db.get_event_participants(event_id)
@@ -973,7 +1041,7 @@ async def process_admin_event(callback_query: CallbackQuery):
     )
     keyboard.add(
         InlineKeyboardButton("« К списку", callback_data="events_list"),
-        InlineKeyboardButton("« В меню", callback_data="back_to_menu")
+        InlineKeyboardButton("« Главное меню", callback_data="back_to_menu")
     )
 
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
@@ -992,7 +1060,9 @@ async def process_view_participants(callback_query: CallbackQuery):
     participants = db.get_event_participants(event_id)
 
     if not participants:
-        await bot.send_message(user_id, f"На мероприятие '{event['title']}' никто не записался")
+        await bot.send_message(user_id,
+                               f"На мероприятие '{event['title']}' никто не записался",
+                               reply_markup=get_back_to_menu_keyboard())
         return
 
     text = f"📋 <b>Участники мероприятия: {event['title']}</b>\n\n"
@@ -1013,6 +1083,7 @@ async def process_view_participants(callback_query: CallbackQuery):
         ))
 
     keyboard.add(InlineKeyboardButton("« Назад", callback_data=f"admin_event_{event_id}"))
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
 
     await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode=types.ParseMode.HTML)
 
@@ -1036,6 +1107,7 @@ async def process_admin_cancel_registration(callback_query: CallbackQuery):
         InlineKeyboardButton("✅ Да, отменить", callback_data=f"confirm_admin_cancel_{event_id}_{participant_id}"),
         InlineKeyboardButton("❌ Нет", callback_data=f"view_participants_{event_id}")
     )
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
 
     await bot.send_message(user_id,
                            f"❓ Вы уверены, что хотите отменить регистрацию участника?\n\n"
@@ -1058,6 +1130,7 @@ async def process_confirm_admin_cancel(callback_query: CallbackQuery):
             await bot.send_message(participant_id,
                                    f"⚠️ <b>Внимание!</b>\n\n"
                                    f"Ваша регистрация на мероприятие была отменена администратором.",
+                                   reply_markup=get_back_to_menu_keyboard(),
                                    parse_mode=types.ParseMode.HTML)
         except:
             pass
@@ -1065,7 +1138,8 @@ async def process_confirm_admin_cancel(callback_query: CallbackQuery):
         await bot.send_message(user_id, f"✅ {message}")
         await process_view_participants(callback_query)
     else:
-        await bot.send_message(user_id, f"❌ {message}")
+        await bot.send_message(user_id, f"❌ {message}",
+                               reply_markup=get_back_to_menu_keyboard())
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith("delete_event_"))
@@ -1084,6 +1158,7 @@ async def process_delete_event(callback_query: CallbackQuery):
         InlineKeyboardButton("✅ Да, удалить", callback_data=f"confirm_delete_{event_id}"),
         InlineKeyboardButton("❌ Нет", callback_data=f"admin_event_{event_id}")
     )
+    keyboard.add(InlineKeyboardButton("« Главное меню", callback_data="back_to_menu"))
 
     await bot.send_message(user_id,
                            f"❓ <b>Вы уверены, что хотите удалить мероприятие?</b>\n\n"
@@ -1100,17 +1175,22 @@ async def process_confirm_delete(callback_query: CallbackQuery):
     event_id = int(callback_query.data.split("_")[2])
 
     success, message = db.delete_event(event_id)
-    await bot.send_message(user_id, "✅ " + message if success else "❌ " + message)
+
+    keyboard = get_back_to_menu_keyboard()
 
     if success:
+        await bot.send_message(user_id, "✅ " + message, reply_markup=keyboard)
         await process_events_list(callback_query)
+    else:
+        await bot.send_message(user_id, "❌ " + message, reply_markup=keyboard)
 
 
 @dp.message_handler()
 async def handle_unknown(message: types.Message):
     await message.answer(
         "🤔 Извините, я не понимаю эту команду.\n"
-        "Используйте /help для получения списка доступных команд."
+        "Используйте /help для получения списка доступных команд.",
+        reply_markup=get_back_to_menu_keyboard()
     )
 
 
